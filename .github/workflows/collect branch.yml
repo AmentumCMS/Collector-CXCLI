@@ -246,13 +246,12 @@ jobs:
 
             echo "=== Scanning: ${img_dir} ===" | tee -a scan-results/trivy-report.txt
 
-            # POSITIONAL ARGUMENT used instead of --input
-            trivy image \
+            # Using 'rootfs' instead of 'image' for Skopeo-style directories
+            trivy rootfs \
               --quiet \
-              --scanners vuln \
               --format json \
               --output "$json_file" \
-              "dir:${img_dir}" \
+              "$img_dir" \
               >> scan-results/trivy-report.txt 2>&1 || true
 
             if [ ! -s "$json_file" ]; then
