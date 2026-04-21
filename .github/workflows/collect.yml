@@ -255,12 +255,12 @@ jobs:
             echo "=== Scanning ${img_dir} ===" | tee -a scan-results/trivy-report.txt
 
             trivy image \
-              --quiet \
-              --scanners vuln \
-              --input "$archive" \
-              --format json \
-              -o "$json_file" \
-              >> scan-results/trivy-report.txt 2>&1 || true
+                  --quiet \
+                  --scanners vuln \
+                  --format json \
+                  -o "$json_file" \
+                  "oci:${img_dir}" \
+                  >> scan-results/trivy-report.txt 2>&1 || true
 
             if [ ! -s "$json_file" ]; then
               echo "FATAL: JSON output missing for ${img_dir} (${json_file})" | tee -a scan-results/trivy-report.txt
