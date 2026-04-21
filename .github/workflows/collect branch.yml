@@ -238,8 +238,9 @@ jobs:
             echo "Preparing archive from dir transport: $img_dir"
 
             skopeo copy \
+              --format v2s2 \
               "dir:${img_dir}" \
-              "oci-archive:${archive}:${safe}"
+              "docker-archive:${archive}:${safe}"
 
             echo "${img_dir}|${archive}|${safe}" >> scan-images/archives.txt
           done
@@ -267,7 +268,6 @@ jobs:
             trivy image \
               --quiet \
               --scanners vuln \
-              --image-src oci-archive
               --input "$archive" \
               --format json \
               -o "$json_file" \
