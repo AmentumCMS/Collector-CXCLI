@@ -456,6 +456,9 @@ jobs:
       - name: Copy Markdowns to ${{ vars.COLLECTOR }}
         run: cp -v *.md ${{ vars.COLLECTOR }}/
 
+      # Download Binaries if needed
+      # Binaries Downloaded
+
       - name: Show Artifacts
         run: ls -1sh ${{ vars.COLLECTOR }}
 
@@ -511,7 +514,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload ISO Hash
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ vars.COLLECTOR }}-${{ needs.Date.outputs.Date }}.iso.sha
           path: ${{ vars.COLLECTOR }}-${{ needs.Date.outputs.Date }}.iso.sha
