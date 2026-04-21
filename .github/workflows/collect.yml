@@ -229,7 +229,7 @@ jobs:
 
             skopeo copy \
               "dir:${img_dir}" \
-              "docker-archive:${archive}:${safe}"
+              "oci-archive:${archive}:${safe}"
 
             echo "${img_dir}|${archive}|${safe}" >> scan-images/archives.txt
           done
