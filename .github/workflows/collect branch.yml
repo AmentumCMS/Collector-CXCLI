@@ -267,6 +267,7 @@ jobs:
             trivy image \
               --quiet \
               --scanners vuln \
+              --image-src oci-archive
               --input "$archive" \
               --format json \
               -o "$json_file" \
