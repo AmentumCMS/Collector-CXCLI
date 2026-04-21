@@ -289,12 +289,12 @@ jobs:
             echo "=== Scanning OCI Directory: ${img_dir} ===" | tee -a scan-results/grype-report.txt
 
             # Use oci-dir: prefix for Grype to scan the folder
-            grype "oci-dir:${img_dir}" -o json \
+            grype "dir:${img_dir}" -o json \
               > "$json_file" \
               2>> scan-results/grype-report.txt || true
 
             # Generate the HTML report using the template
-            grype "oci-dir:${img_dir}" \
+            grype "dir:${img_dir}" \
               -o template \
               -t templates/grype-html.tmpl \
               > "$html_file" \
