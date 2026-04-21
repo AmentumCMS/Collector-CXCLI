@@ -246,21 +246,13 @@ jobs:
 
             echo "=== Scanning: ${img_dir} ===" | tee -a scan-results/trivy-report.txt
 
-            # Determine the correct prefix. 
-            # Use 'oci:' if index.json exists, otherwise use 'dir:'
-            if [ -f "${img_dir}/index.json" ]; then
-              TARGET="oci:${img_dir}"
-            else
-              TARGET="dir:${img_dir}"
-            fi
-
             # POSITIONAL ARGUMENT used instead of --input
             trivy image \
               --quiet \
               --scanners vuln \
               --format json \
               --output "$json_file" \
-              "$TARGET" \
+              "dir:${img_dir}" \
               >> scan-results/trivy-report.txt 2>&1 || true
 
             if [ ! -s "$json_file" ]; then
