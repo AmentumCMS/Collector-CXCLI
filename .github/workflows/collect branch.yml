@@ -216,68 +216,61 @@ jobs:
           echo "Extracted contents:"
           find extracted -maxdepth 4 -type f | sort | head -200
 
-      - name: Build local archive list from synced images
+      - name: Build local scan list from synced images
         run: |
           set -euo pipefail
 
           mkdir -p \
-            scan-images \
             scan-results/trivy \
             scan-results/trivy-html \
             scan-results/grype \
             scan-results/grype-html
 
-          : > scan-images/archives.txt
+          # Create a file to track directories to scan
+          : > scan-list.txt
 
+          # Find every directory that contains a manifest (OCI or Docker)
           find "extracted/${{ vars.COLLECTOR }}" -type f -name manifest.json | while read -r manifest; do
             img_dir="$(dirname "$manifest")"
             rel="${img_dir#extracted/${{ vars.COLLECTOR }}/}"
+            # Create a safe filename for reports
             safe="$(printf '%s' "$rel" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
-            archive="scan-images/${safe}.tar"
 
-            echo "Preparing archive from dir transport: $img_dir"
-
-            skopeo copy \
-              --format v2s2 \
-              "dir:${img_dir}" \
-              "docker-archive:${archive}:${safe}"
-
-            echo "${img_dir}|${archive}|${safe}" >> scan-images/archives.txt
+            echo "${img_dir}|${safe}" >> scan-list.txt
           done
 
-          test -s scan-images/archives.txt || {
+          test -s scan-list.txt || {
             echo "ERROR: no synced images found for scanning"
             exit 1
           }
-
-          echo "Archive list:"
-          cat scan-images/archives.txt
           
       - name: Trivy scan local synced images
         run: |
           set -euo pipefail
           : > scan-results/trivy-report.txt
 
-          while IFS='|' read -r img_dir archive safe; do
-            [ -n "$archive" ] || continue
+          while IFS='|' read -r img_dir safe; do
+            [ -n "$img_dir" ] || continue
             json_file="scan-results/trivy/${safe}.json"
             html_file="scan-results/trivy-html/${safe}.html"
 
-            echo "=== Scanning ${img_dir} ===" | tee -a scan-results/trivy-report.txt
+            echo "=== Scanning OCI Directory: ${img_dir} ===" | tee -a scan-results/trivy-report.txt
 
+            # Use oci: prefix to scan the directory directly
             trivy image \
               --quiet \
               --scanners vuln \
-              --input "$archive" \
+              --input "oci:${img_dir}" \
               --format json \
               -o "$json_file" \
               >> scan-results/trivy-report.txt 2>&1 || true
 
             if [ ! -s "$json_file" ]; then
-              echo "FATAL: JSON output missing for ${img_dir} (${json_file})" | tee -a scan-results/trivy-report.txt
+              echo "FATAL: JSON output missing for ${img_dir}" | tee -a scan-results/trivy-report.txt
               continue
             fi
 
+            # Generate HTML report
             trivy convert \
               --format template \
               --template "@templates/trivy-html.tpl" \
@@ -285,13 +278,14 @@ jobs:
               "$json_file" \
               >> scan-results/trivy-report.txt 2>&1 || true
 
-            echo "=== ${img_dir} ===" >> scan-results/trivy-report.txt
+            # Append Table view to the main log
+            echo "=== ${img_dir} Results ===" >> scan-results/trivy-report.txt
             trivy convert --format table "$json_file" >> scan-results/trivy-report.txt 2>&1 || true
             echo >> scan-results/trivy-report.txt
-          done < scan-images/archives.txt
+          done < scan-list.txt
 
           if grep -Eqi 'Fatal error|FATAL' scan-results/trivy-report.txt; then
-            echo "Compliance failed: Trivy fatal/conversion error."
+            echo "Compliance failed: Trivy fatal error detected in report."
             exit 1
           fi
 
@@ -300,32 +294,35 @@ jobs:
           set -euo pipefail
           : > scan-results/grype-report.txt
 
-          while IFS='|' read -r img_dir archive safe; do
-            [ -n "$archive" ] || continue
+          # Note: We now read from scan-list.txt which contains |img_dir|safe|
+          while IFS='|' read -r img_dir safe; do
+            [ -n "$img_dir" ] || continue
 
             json_file="scan-results/grype/${safe}.json"
             html_file="scan-results/grype-html/${safe}.html"
 
-            echo "=== Scanning ${img_dir} ===" | tee -a scan-results/grype-report.txt
+            echo "=== Scanning OCI Directory: ${img_dir} ===" | tee -a scan-results/grype-report.txt
 
-            grype "docker-archive:${archive}" -o json \
+            # Use oci-dir: prefix for Grype to scan the folder
+            grype "oci-dir:${img_dir}" -o json \
               > "$json_file" \
               2>> scan-results/grype-report.txt || true
 
-            grype "docker-archive:${archive}" \
+            # Generate the HTML report using the template
+            grype "oci-dir:${img_dir}" \
               -o template \
               -t templates/grype-html.tmpl \
               > "$html_file" \
               2>> scan-results/grype-report.txt || true
 
             if [ ! -s "$json_file" ]; then
-              echo "FATAL: JSON output missing for ${img_dir} (${json_file})" | tee -a scan-results/grype-report.txt
+              echo "FATAL: Grype JSON output missing for ${img_dir}" | tee -a scan-results/grype-report.txt
             fi
 
             if [ ! -s "$html_file" ]; then
-              echo "FATAL: HTML output missing for ${img_dir} (${html_file})" | tee -a scan-results/grype-report.txt
+              echo "FATAL: Grype HTML output missing for ${img_dir}" | tee -a scan-results/grype-report.txt
             fi
-          done < scan-images/archives.txt
+          done < scan-list.txt
 
       - name: Write vulnerability summary
         run: |
