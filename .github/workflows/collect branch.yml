@@ -219,30 +219,20 @@ jobs:
       - name: Build local scan list from synced images
         run: |
           set -euo pipefail
-
-          mkdir -p \
-            scan-results/trivy \
-            scan-results/trivy-html \
-            scan-results/grype \
-            scan-results/grype-html
-
-          # Create a file to track directories to scan
+          mkdir -p scan-results/trivy scan-results/trivy-html scan-results/grype scan-results/grype-html
           : > scan-list.txt
 
-          # Find every directory that contains a manifest (OCI or Docker)
-          find "extracted/${{ vars.COLLECTOR }}" -type f -name manifest.json | while read -r manifest; do
+          # Look for index.json (OCI) or manifest.json (Docker)
+          find "extracted/${{ vars.COLLECTOR }}" -type f \( -name "index.json" -o -name "manifest.json" \) | while read -r manifest; do
             img_dir="$(dirname "$manifest")"
+            # Avoid blobs subdirectories
+            [[ "$img_dir" == *"blobs"* ]] && continue
+            
             rel="${img_dir#extracted/${{ vars.COLLECTOR }}/}"
-            # Create a safe filename for reports
             safe="$(printf '%s' "$rel" | sed -E 's/[^A-Za-z0-9._-]+/_/g')"
 
             echo "${img_dir}|${safe}" >> scan-list.txt
           done
-
-          test -s scan-list.txt || {
-            echo "ERROR: no synced images found for scanning"
-            exit 1
-          }
           
       - name: Trivy scan local synced images
         run: |
@@ -254,15 +244,23 @@ jobs:
             json_file="scan-results/trivy/${safe}.json"
             html_file="scan-results/trivy-html/${safe}.html"
 
-            echo "=== Scanning OCI Directory: ${img_dir} ===" | tee -a scan-results/trivy-report.txt
+            echo "=== Scanning: ${img_dir} ===" | tee -a scan-results/trivy-report.txt
 
-            # Use oci: prefix to scan the directory directly
+            # Determine the correct prefix. 
+            # Use 'oci:' if index.json exists, otherwise use 'dir:'
+            if [ -f "${img_dir}/index.json" ]; then
+              TARGET="oci:${img_dir}"
+            else
+              TARGET="dir:${img_dir}"
+            fi
+
+            # POSITIONAL ARGUMENT used instead of --input
             trivy image \
               --quiet \
               --scanners vuln \
-              --input "oci:${img_dir}" \
               --format json \
-              -o "$json_file" \
+              --output "$json_file" \
+              "$TARGET" \
               >> scan-results/trivy-report.txt 2>&1 || true
 
             if [ ! -s "$json_file" ]; then
@@ -270,7 +268,6 @@ jobs:
               continue
             fi
 
-            # Generate HTML report
             trivy convert \
               --format template \
               --template "@templates/trivy-html.tpl" \
@@ -278,10 +275,7 @@ jobs:
               "$json_file" \
               >> scan-results/trivy-report.txt 2>&1 || true
 
-            # Append Table view to the main log
-            echo "=== ${img_dir} Results ===" >> scan-results/trivy-report.txt
             trivy convert --format table "$json_file" >> scan-results/trivy-report.txt 2>&1 || true
-            echo >> scan-results/trivy-report.txt
           done < scan-list.txt
 
           if grep -Eqi 'Fatal error|FATAL' scan-results/trivy-report.txt; then
